@@ -48,6 +48,12 @@ network.info("Request started")
 network.error("Failed to decode response", metadata: ["status": 500])
 ```
 
+Run the bundled console demo without creating another project:
+
+```sh
+swift run LoGGerDemo
+```
+
 ## Configuration
 
 Use `LoggerBuilder` to declare destinations and keep filters close to the output they affect.

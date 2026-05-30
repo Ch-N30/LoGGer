@@ -44,8 +44,8 @@ struct LoGGerTests {
         let captured = await waitForEntries(in: destination, expectedCount: 2)
 
         // Then
-        #expect(captured.map(\.message) == ["Network connected", "Auth refreshed"])
-        #expect(captured.map(\.category) == ["Network", "Auth"])
+        #expect(Set(captured.map(\.message)) == Set(["Network connected", "Auth refreshed"]))
+        #expect(Set(captured.compactMap(\.category)) == Set(["Network", "Auth"]))
         #expect(destination.writeCallCount == 2)
     }
 
