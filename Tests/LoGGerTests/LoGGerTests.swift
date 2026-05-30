@@ -222,6 +222,58 @@ final class LoGGerTests: XCTestCase {
         XCTAssertTrue(PrettyFormatter.minimal.format(entry).contains("Static formatter"))
     }
 
+    func testLogDestinationAcceptsEntryWhenAllFiltersPass() {
+        let destination = RecordingDestination(
+            filters: [LevelFilter(.warning), CategoryFilter(["Network"])],
+            store: RecordingStore()
+        )
+
+        XCTAssertTrue(destination.accepts(makeEntry(level: .error, category: "Network")))
+        XCTAssertFalse(destination.accepts(makeEntry(level: .info, category: "Network")))
+        XCTAssertFalse(destination.accepts(makeEntry(level: .error, category: "Auth")))
+    }
+
+    func testLogDestinationWithoutFiltersAcceptsEveryEntry() {
+        let destination = RecordingDestination(store: RecordingStore())
+
+        XCTAssertTrue(destination.accepts(makeEntry(level: .verbose, category: nil)))
+    }
+
+    func testLogActorProcessesOnlyAcceptedDestinations() async {
+        let networkStore = RecordingStore()
+        let authStore = RecordingStore()
+        let logger = LogActor(
+            destinations: [
+                RecordingDestination(filters: [CategoryFilter(["Network"])], store: networkStore),
+                RecordingDestination(filters: [CategoryFilter(["Auth"])], store: authStore)
+            ]
+        )
+
+        await logger.process(makeEntry(message: "Network response", level: .info, category: "Network"))
+
+        let networkMessages = await networkStore.messages()
+        let authMessages = await authStore.messages()
+
+        XCTAssertEqual(networkMessages, ["Network response"])
+        XCTAssertEqual(authMessages, [])
+    }
+
+    func testLogActorContinuesWhenDestinationThrows() async {
+        let store = RecordingStore()
+        let logger = LogActor(
+            destinations: [
+                RecordingDestination(store: RecordingStore(), writeError: TestWriteError.failed),
+                RecordingDestination(store: store)
+            ]
+        )
+
+        await logger.process(makeEntry(message: "Still written", level: .error))
+
+        let messages = await store.messages()
+
+        XCTAssertEqual(messages, ["Still written"])
+    }
+
     private func makeEntry(
         message: String = "Message",
         level: LogLevel = .info,
@@ -241,4 +293,48 @@ final class LoGGerTests: XCTestCase {
             line: line
         )
     }
+}
+
+private actor RecordingStore {
+    private var entries: [LogEntry] = []
+
+    func append(_ entry: LogEntry) {
+        entries.append(entry)
+    }
+
+    func messages() -> [String] {
+        entries.map(\.message)
+    }
+}
+
+private final class RecordingDestination: LogDestination {
+    let formatter: any LogFormatter
+    let filters: [any LogFilter]
+
+    private let store: RecordingStore
+    private let writeError: (any Error)?
+
+    init(
+        formatter: any LogFormatter = PrettyFormatter.minimal,
+        filters: [any LogFilter] = [],
+        store: RecordingStore,
+        writeError: (any Error)? = nil
+    ) {
+        self.formatter = formatter
+        self.filters = filters
+        self.store = store
+        self.writeError = writeError
+    }
+
+    func write(_ entry: LogEntry) async throws {
+        if let writeError {
+            throw writeError
+        }
+
+        await store.append(entry)
+    }
+}
+
+private enum TestWriteError: Error {
+    case failed
 }
