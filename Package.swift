@@ -16,10 +16,18 @@ let package = Package(
             name: "LoGGer",
             targets: ["LoGGer"]
         ),
+        .executable(
+            name: "LoGGerDemo",
+            targets: ["LoGGerDemo"]
+        ),
     ],
     targets: [
         .target(
             name: "LoGGer"
+        ),
+        .executableTarget(
+            name: "LoGGerDemo",
+            dependencies: ["LoGGer"]
         ),
         .testTarget(
             name: "LoGGerTests",

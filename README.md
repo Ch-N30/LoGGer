@@ -48,6 +48,12 @@ network.info("Request started")
 network.error("Failed to decode response", metadata: ["status": 500])
 ```
 
+Run the bundled console demo without creating another project:
+
+```sh
+swift run LoGGerDemo
+```
+
 ## Configuration
 
 Use `LoggerBuilder` to declare destinations and keep filters close to the output they affect.
@@ -68,10 +74,15 @@ let logger = Logger {
 }
 ```
 
-ANSI colors are opt-in. Enable them only for terminals that interpret escape sequences:
+ANSI colors, emoji, and Unicode box-drawing are opt-in. Enable them only for consoles where that output is useful:
 
 ```swift
-PrettyFormatter(components: .full, isColorEnabled: true)
+PrettyFormatter(
+    components: .full,
+    isColorEnabled: true,
+    isEmojiEnabled: true,
+    usesUnicodeSymbols: true
+)
 ```
 
 ## Extending

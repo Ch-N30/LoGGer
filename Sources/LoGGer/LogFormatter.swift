@@ -108,20 +108,36 @@ public struct PrettyFormatter: LogFormatter {
     /// Keep this disabled for Xcode and other consoles that do not interpret ANSI colors.
     public let isColorEnabled: Bool
 
+    /// A Boolean value that controls whether level emoji are included in formatted output.
+    ///
+    /// Keep this disabled for production IDE logs where stable plain-text output matters more than decoration.
+    public let isEmojiEnabled: Bool
+
+    /// A Boolean value that controls whether Unicode separators, arrows, and borders are included in formatted output.
+    ///
+    /// Keep this disabled for Xcode and other consoles that do not render box-drawing characters consistently.
+    public let usesUnicodeSymbols: Bool
+
     /// Creates a pretty formatter.
     ///
     /// - Parameters:
     ///   - components: The optional sections included in formatted output.
     ///   - timeZoneIdentifier: A time zone identifier used for timestamp formatting, or `nil` to use the current system time zone.
     ///   - isColorEnabled: Whether ANSI color escape sequences are included in formatted output.
+    ///   - isEmojiEnabled: Whether level emoji are included in formatted output.
+    ///   - usesUnicodeSymbols: Whether Unicode separators, arrows, and borders are included in formatted output.
     public init(
         components: Components = .full,
         timeZoneIdentifier: String? = nil,
-        isColorEnabled: Bool = false
+        isColorEnabled: Bool = false,
+        isEmojiEnabled: Bool = false,
+        usesUnicodeSymbols: Bool = false
     ) {
         self.components = components
         self.timeZoneIdentifier = timeZoneIdentifier
         self.isColorEnabled = isColorEnabled
+        self.isEmojiEnabled = isEmojiEnabled
+        self.usesUnicodeSymbols = usesUnicodeSymbols
     }
 
     /// Converts a log entry into a compact line or an expanded framed block.
@@ -141,7 +157,7 @@ public struct PrettyFormatter: LogFormatter {
     }
 
     private func formatCompactLine(for entry: LogEntry) -> String {
-        var leadingParts = ["\(entry.level.emoji) \(entry.level.label)"]
+        var leadingParts = [levelDescription(for: entry.level)]
 
         if components.contains(.category), let category = entry.category {
             leadingParts.append(category)
@@ -159,8 +175,8 @@ public struct PrettyFormatter: LogFormatter {
     }
 
     private func formatExpandedBlock(for entry: LogEntry) -> String {
-        let headerSeparator = components.contains(.separator) ? "  │  " : "  "
-        var headerParts = ["\(entry.level.emoji) \(entry.level.label)"]
+        let headerSeparator = components.contains(.separator) ? self.headerSeparator : "  "
+        var headerParts = [levelDescription(for: entry.level)]
 
         if components.contains(.category), let category = entry.category {
             headerParts.append(category)
@@ -175,15 +191,16 @@ public struct PrettyFormatter: LogFormatter {
         contentLines.append(contentsOf: entry.message.split(separator: "\n", omittingEmptySubsequences: false).map(String.init))
 
         if components.contains(.location) {
-            contentLines.append("→ \(location(for: entry))")
+            contentLines.append("\(arrow) \(location(for: entry))")
         }
 
         if components.contains(.threadInfo) {
-            contentLines.append("→ thread: \(threadDescription())")
+            contentLines.append("\(arrow) thread: \(threadDescription())")
         }
 
-        if components.contains(.metadata), let metadata = metadataDescription(for: entry.metadata) {
-            contentLines.append("→ metadata: \(metadata)")
+        if components.contains(.metadata), let metadataLines = metadataLines(for: entry.metadata) {
+            contentLines.append("\(arrow) metadata:")
+            contentLines.append(contentsOf: metadataLines)
         }
 
         let width = contentLines.map(\.count).max() ?? 0
@@ -208,6 +225,18 @@ public struct PrettyFormatter: LogFormatter {
         }
 
         return "\(level.ansiColor)\(text)\(Self.ansiReset)"
+    }
+
+    private func levelDescription(for level: LogLevel) -> String {
+        isEmojiEnabled ? "\(level.emoji) \(level.label)" : level.label
+    }
+
+    private var headerSeparator: String {
+        usesUnicodeSymbols ? "  │  " : " | "
+    }
+
+    private var arrow: String {
+        usesUnicodeSymbols ? "→" : "->"
     }
 
     private func timestamp(for date: Date) -> String {
@@ -245,32 +274,47 @@ public struct PrettyFormatter: LogFormatter {
         Thread.isMainThread ? "main" : "background"
     }
 
-    private func metadataDescription(for metadata: [String: any Sendable]?) -> String? {
+    private func metadataLines(for metadata: [String: any Sendable]?) -> [String]? {
         guard let metadata, !metadata.isEmpty else {
             return nil
         }
 
         return metadata
             .sorted { $0.key < $1.key }
-            .map { "\($0.key)=\(String(describing: $0.value))" }
-            .joined(separator: ", ")
+            .map { "   \($0.key)=\(String(describing: $0.value))" }
     }
 
     private func topBorder(width: Int) -> String {
-        "╔\(String(repeating: "═", count: width + 2))╗"
+        if usesUnicodeSymbols {
+            return "╔\(String(repeating: "═", count: width + 2))╗"
+        }
+
+        return "+\(String(repeating: "-", count: width + 2))+"
     }
 
     private func middleBorder(width: Int) -> String {
-        "╠\(String(repeating: "═", count: width + 2))╣"
+        if usesUnicodeSymbols {
+            return "╠\(String(repeating: "═", count: width + 2))╣"
+        }
+
+        return "+\(String(repeating: "-", count: width + 2))+"
     }
 
     private func bottomBorder(width: Int) -> String {
-        "╚\(String(repeating: "═", count: width + 2))╝"
+        if usesUnicodeSymbols {
+            return "╚\(String(repeating: "═", count: width + 2))╝"
+        }
+
+        return "+\(String(repeating: "-", count: width + 2))+"
     }
 
     private func framedLine(_ text: String, width: Int) -> String {
         let padding = String(repeating: " ", count: max(0, width - text.count))
-        return "║ \(text)\(padding) ║"
+        if usesUnicodeSymbols {
+            return "║ \(text)\(padding) ║"
+        }
+
+        return "| \(text)\(padding) |"
     }
 
     private static let ansiReset = "\u{001B}[0m"
