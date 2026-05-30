@@ -1,59 +1,272 @@
-import XCTest
+import Foundation
+import Testing
 @testable import LoGGer
 
-final class LoGGerTests: XCTestCase {
-    func testLogLevelOrderingFollowsSeverity() {
-        XCTAssertLessThan(LogLevel.verbose, .debug)
-        XCTAssertLessThan(LogLevel.debug, .info)
-        XCTAssertLessThan(LogLevel.info, .warning)
-        XCTAssertLessThan(LogLevel.warning, .error)
-        XCTAssertLessThan(LogLevel.error, .fault)
+@Suite("LoGGer")
+struct LoGGerTests {
+    @Test("Filtering drops entries below minimum level")
+    func filteringDropsEntriesBelowMinimumLevel() async throws {
+        // Given
+        let destination = MockDestination(filters: [LevelFilter(.error)])
+        let logger = Logger {
+            destination
+        }
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Debug details"
+        }
+
+        // When
+        logger.debug(makeMessage())
+        try await Task.sleep(for: .milliseconds(20))
+
+        // Then
+        #expect(destination.captured.isEmpty)
+        #expect(destination.writeCallCount == 0)
+        #expect(messageEvaluationCount == 0)
     }
 
-    func testLogLevelLabelsAndDescriptions() {
-        XCTAssertEqual(LogLevel.verbose.label, "VERBOSE")
-        XCTAssertEqual(LogLevel.debug.label, "DEBUG")
-        XCTAssertEqual(LogLevel.info.label, "INFO")
-        XCTAssertEqual(LogLevel.warning.label, "WARNING")
-        XCTAssertEqual(LogLevel.error.label, "ERROR")
-        XCTAssertEqual(LogLevel.fault.label, "FAULT")
-        XCTAssertEqual(LogLevel.warning.description, "WARNING")
+    @Test("CategoryFilter whitelist allows only configured categories")
+    func categoryFilterWhitelistAllowsOnlyConfiguredCategories() async {
+        // Given
+        let destination = MockDestination(filters: [CategoryFilter(["Network", "Auth"])])
+        let logger = Logger {
+            destination
+        }
+
+        // When
+        logger.info("Network connected", category: "Network")
+        logger.info("Auth refreshed", category: "Auth")
+        logger.info("Database opened", category: "Database")
+        logger.info("Uncategorized")
+        let captured = await waitForEntries(in: destination, expectedCount: 2)
+
+        // Then
+        #expect(captured.map(\.message) == ["Network connected", "Auth refreshed"])
+        #expect(captured.map(\.category) == ["Network", "Auth"])
+        #expect(destination.writeCallCount == 2)
     }
 
-    func testLogLevelTerminalAttributes() {
-        XCTAssertEqual(LogLevel.verbose.ansiColor, "\u{001B}[0;37m")
-        XCTAssertEqual(LogLevel.debug.ansiColor, "\u{001B}[0;36m")
-        XCTAssertEqual(LogLevel.info.ansiColor, "\u{001B}[0;32m")
-        XCTAssertEqual(LogLevel.warning.ansiColor, "\u{001B}[0;33m")
-        XCTAssertEqual(LogLevel.error.ansiColor, "\u{001B}[0;31m")
-        XCTAssertEqual(LogLevel.fault.ansiColor, "\u{001B}[1;35m")
-        XCTAssertFalse(LogLevel.error.emoji.isEmpty)
+    @Test("CompositeFilter supports AND and OR logic")
+    func compositeFilterSupportsAndAndOrLogic() {
+        // Given
+        let andFilter = LevelFilter(.warning) && CategoryFilter(["Network"])
+        let orFilter = CategoryFilter(["Network"]) || LevelFilter(.fault)
+
+        // When
+        let warningNetwork = makeEntry(level: .warning, category: "Network")
+        let infoNetwork = makeEntry(level: .info, category: "Network")
+        let faultDatabase = makeEntry(level: .fault, category: "Database")
+        let debugDatabase = makeEntry(level: .debug, category: "Database")
+
+        // Then
+        #expect(andFilter.isAllowed(warningNetwork))
+        #expect(!andFilter.isAllowed(infoNetwork))
+        #expect(orFilter.isAllowed(infoNetwork))
+        #expect(orFilter.isAllowed(faultDatabase))
+        #expect(!orFilter.isAllowed(debugDatabase))
     }
 
-    func testLogEntryStoresProvidedContext() {
-        let id = UUID()
-        let date = Date(timeIntervalSince1970: 1_700_000_000)
-        let entry = LogEntry(
-            message: "Request failed",
+    @Test("Multiple destinations each receive the entry")
+    func multipleDestinationsEachReceiveEntry() async throws {
+        // Given
+        let firstDestination = MockDestination()
+        let secondDestination = MockDestination()
+        let logger = Logger {
+            firstDestination
+            secondDestination
+        }
+
+        // When
+        logger.warning("Fan-out", category: "System")
+        let firstEntries = await waitForEntries(in: firstDestination, expectedCount: 1)
+        let secondEntries = await waitForEntries(in: secondDestination, expectedCount: 1)
+
+        // Then
+        let firstEntry = try #require(firstEntries.first)
+        let secondEntry = try #require(secondEntries.first)
+        #expect(firstEntry.message == "Fan-out")
+        #expect(secondEntry.message == "Fan-out")
+        #expect(firstEntry.id == secondEntry.id)
+        #expect(firstDestination.writeCallCount == 1)
+        #expect(secondDestination.writeCallCount == 1)
+    }
+
+    @Test("log() does not block caller while destination writes asynchronously")
+    func logDoesNotBlockCallerWhileDestinationWritesAsynchronously() async {
+        // Given
+        let destination = MockDestination(sleepDuration: .milliseconds(250))
+        let logger = Logger {
+            destination
+        }
+        let clock = ContinuousClock()
+
+        // When
+        let elapsed = clock.measure {
+            logger.info("Delayed destination")
+        }
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(elapsed < .milliseconds(50))
+        #expect(captured.map(\.message) == ["Delayed destination"])
+        #expect(destination.writeCallCount == 1)
+    }
+
+    @Test("ScopedLogger applies category automatically")
+    func scopedLoggerAppliesCategoryAutomatically() async {
+        // Given
+        let destination = MockDestination(filters: [CategoryFilter(["Network"])])
+        let logger = Logger {
+            destination
+        }
+        let scopedLogger = logger.scoped(to: "Network")
+
+        // When
+        scopedLogger.error("Request failed")
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(captured.first?.message == "Request failed")
+        #expect(captured.first?.category == "Network")
+        #expect(destination.writeCallCount == 1)
+    }
+
+    @Test("@autoclosure message is not evaluated when filtered out")
+    func autoclosureMessageIsNotEvaluatedWhenFilteredOut() async throws {
+        // Given
+        let destination = MockDestination(filters: [LevelFilter(.fault)])
+        let logger = Logger {
+            destination
+        }
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive message"
+        }
+
+        // When
+        logger.error(makeMessage())
+        try await Task.sleep(for: .milliseconds(20))
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+        #expect(destination.captured.isEmpty)
+        #expect(destination.writeCallCount == 0)
+    }
+
+    @Test("PrettyFormatter output contains expected components")
+    func prettyFormatterOutputContainsExpectedComponents() {
+        // Given
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let entry = makeEntry(
+            message: "Failed to decode response",
             level: .error,
-            category: "network",
-            metadata: ["statusCode": 500, "requestID": "abc"],
-            id: id,
-            date: date,
-            file: "NetworkClient.swift",
-            function: "fetch()",
+            category: "Network",
+            metadata: ["statusCode": 500],
+            file: "NetworkService.swift",
             line: 42
         )
 
-        XCTAssertEqual(entry.id, id)
-        XCTAssertEqual(entry.message, "Request failed")
-        XCTAssertEqual(entry.level, .error)
-        XCTAssertEqual(entry.date, date)
-        XCTAssertEqual(String(describing: entry.file), "NetworkClient.swift")
-        XCTAssertEqual(String(describing: entry.function), "fetch()")
-        XCTAssertEqual(entry.line, 42)
-        XCTAssertEqual(entry.category, "network")
-        XCTAssertEqual(entry.metadata?["statusCode"] as? Int, 500)
-        XCTAssertEqual(entry.metadata?["requestID"] as? String, "abc")
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(output.hasPrefix(LogLevel.error.ansiColor))
+        #expect(output.hasSuffix("\u{001B}[0m"))
+        #expect(output.contains("ERROR"))
+        #expect(output.contains("Network"))
+        #expect(output.contains("22:13:20"))
+        #expect(output.contains("Failed to decode response"))
+        #expect(output.contains("NetworkService.swift:42"))
+        #expect(output.contains("statusCode=500"))
+        #expect(output.contains("╔"))
+        #expect(output.contains("╚"))
+    }
+
+    private func waitForEntries(
+        in destination: MockDestination,
+        expectedCount: Int
+    ) async -> [LogEntry] {
+        for _ in 0..<50 {
+            let entries = destination.captured
+            if entries.count == expectedCount {
+                return entries
+            }
+
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        return destination.captured
+    }
+
+    private func makeEntry(
+        message: String = "Message",
+        level: LogLevel = .info,
+        category: String? = "General",
+        metadata: [String: any Sendable]? = nil,
+        file: StaticString = "LoGGerTests.swift",
+        line: UInt = 1
+    ) -> LogEntry {
+        LogEntry(
+            message: message,
+            level: level,
+            category: category,
+            metadata: metadata,
+            date: Date(timeIntervalSince1970: 1_700_000_000),
+            file: file,
+            function: "makeEntry()",
+            line: line
+        )
+    }
+}
+
+private final class MockDestination: LogDestination, @unchecked Sendable {
+    let formatter: any LogFormatter
+    let filters: [any LogFilter]
+    let sleepDuration: Duration
+
+    var captured: [LogEntry] {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturedStorage
+    }
+
+    var writeCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return writeCallCountStorage
+    }
+
+    private let lock = NSLock()
+    private var capturedStorage: [LogEntry] = []
+    private var writeCallCountStorage = 0
+
+    init(
+        formatter: any LogFormatter = PrettyFormatter.minimal,
+        filters: [any LogFilter] = [],
+        sleepDuration: Duration = .zero
+    ) {
+        self.formatter = formatter
+        self.filters = filters
+        self.sleepDuration = sleepDuration
+    }
+
+    func write(_ entry: LogEntry) async throws {
+        if sleepDuration != .zero {
+            try await Task.sleep(for: sleepDuration)
+        }
+
+        record(entry)
+    }
+
+    private func record(_ entry: LogEntry) {
+        lock.lock()
+        defer { lock.unlock() }
+        capturedStorage.append(entry)
+        writeCallCountStorage += 1
     }
 }
