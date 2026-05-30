@@ -161,7 +161,11 @@ struct LoGGerTests {
     @Test("PrettyFormatter output contains expected components")
     func prettyFormatterOutputContainsExpectedComponents() {
         // Given
-        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let formatter = PrettyFormatter(
+            components: .full,
+            timeZoneIdentifier: "UTC",
+            isColorEnabled: true
+        )
         let entry = makeEntry(
             message: "Failed to decode response",
             level: .error,
@@ -185,6 +189,46 @@ struct LoGGerTests {
         #expect(output.contains("statusCode=500"))
         #expect(output.contains("╔"))
         #expect(output.contains("╚"))
+    }
+
+    @Test("PrettyFormatter does not emit ANSI colors by default")
+    func prettyFormatterDoesNotEmitAnsiColorsByDefault() {
+        // Given
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let entry = makeEntry(level: .debug)
+
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(!output.contains("\u{001B}"))
+        #expect(!output.contains("[0;36m"))
+        #expect(!output.contains("[0m"))
+    }
+
+    @Test("PrettyFormatter keeps low severity entries compact")
+    func prettyFormatterKeepsLowSeverityEntriesCompact() {
+        // Given
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let entry = makeEntry(
+            message: "Tournament summaries loaded",
+            level: .debug,
+            category: "Tournaments",
+            metadata: ["count": 2],
+            file: "TournamentListViewModel.swift",
+            line: 23
+        )
+
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(!output.contains("\n"))
+        #expect(output.contains("🐞 DEBUG Tournaments Tournament summaries loaded"))
+        #expect(output.contains("22:13:20"))
+        #expect(!output.contains("TournamentListViewModel.swift:23"))
+        #expect(!output.contains("thread:"))
+        #expect(!output.contains("count=2"))
     }
 
     private func waitForEntries(
