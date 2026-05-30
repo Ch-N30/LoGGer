@@ -19,7 +19,7 @@ public protocol LogFormatter: Sendable {
 
 /// A terminal-oriented formatter that renders compact lines for low-severity entries and framed blocks for high-severity entries.
 ///
-/// `PrettyFormatter` applies the ANSI color from `LogLevel.ansiColor` to the whole formatted output.
+/// `PrettyFormatter` can apply the ANSI color from `LogLevel.ansiColor` to the whole formatted output when color is enabled.
 ///
 /// Example:
 /// ```swift
@@ -103,14 +103,25 @@ public struct PrettyFormatter: LogFormatter {
     /// A `nil` value means the formatter uses the current system time zone at formatting time.
     public let timeZoneIdentifier: String?
 
+    /// A Boolean value that controls whether ANSI color escape sequences are included in formatted output.
+    ///
+    /// Keep this disabled for Xcode and other consoles that do not interpret ANSI colors.
+    public let isColorEnabled: Bool
+
     /// Creates a pretty formatter.
     ///
     /// - Parameters:
     ///   - components: The optional sections included in formatted output.
     ///   - timeZoneIdentifier: A time zone identifier used for timestamp formatting, or `nil` to use the current system time zone.
-    public init(components: Components = .full, timeZoneIdentifier: String? = nil) {
+    ///   - isColorEnabled: Whether ANSI color escape sequences are included in formatted output.
+    public init(
+        components: Components = .full,
+        timeZoneIdentifier: String? = nil,
+        isColorEnabled: Bool = false
+    ) {
         self.components = components
         self.timeZoneIdentifier = timeZoneIdentifier
+        self.isColorEnabled = isColorEnabled
     }
 
     /// Converts a log entry into a compact line or an expanded framed block.
@@ -119,7 +130,7 @@ public struct PrettyFormatter: LogFormatter {
     /// Warning, error, and fault entries are rendered as framed multi-line blocks.
     ///
     /// - Parameter entry: The log entry to format.
-    /// - Returns: A terminal-oriented formatted string wrapped in the entry level's ANSI color.
+    /// - Returns: A terminal-oriented formatted string, optionally wrapped in the entry level's ANSI color.
     public func format(_ entry: LogEntry) -> String {
         switch entry.level {
         case .verbose, .debug, .info:
@@ -137,18 +148,6 @@ public struct PrettyFormatter: LogFormatter {
         }
 
         leadingParts.append(entry.message)
-
-        if components.contains(.location) {
-            leadingParts.append(location(for: entry))
-        }
-
-        if components.contains(.threadInfo) {
-            leadingParts.append("thread: \(threadDescription())")
-        }
-
-        if components.contains(.metadata), let metadata = metadataDescription(for: entry.metadata) {
-            leadingParts.append(metadata)
-        }
 
         var line = leadingParts.joined(separator: " ")
 
@@ -204,7 +203,11 @@ public struct PrettyFormatter: LogFormatter {
     }
 
     private func colorized(_ text: String, level: LogLevel) -> String {
-        "\(level.ansiColor)\(text)\(Self.ansiReset)"
+        guard isColorEnabled else {
+            return text
+        }
+
+        return "\(level.ansiColor)\(text)\(Self.ansiReset)"
     }
 
     private func timestamp(for date: Date) -> String {

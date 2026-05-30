@@ -68,6 +68,12 @@ let logger = Logger {
 }
 ```
 
+ANSI colors are opt-in. Enable them only for terminals that interpret escape sequences:
+
+```swift
+PrettyFormatter(components: .full, isColorEnabled: true)
+```
+
 ## Extending
 
 Implement `LogDestination` for custom transports. LoGGer does not ship Sentry or Firebase adapters; keep vendor SDKs in your app or in a separate integration package.
