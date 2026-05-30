@@ -274,6 +274,100 @@ final class LoGGerTests: XCTestCase {
         XCTAssertEqual(messages, ["Still written"])
     }
 
+    func testLoggerBuilderSupportsOptionalAndArrayDestinations() {
+        let isDevelopment = true
+        let additionalDestinations: [any LogDestination] = [
+            ConsoleDestination().withFilter(LevelFilter(.error))
+        ]
+
+        let logger = Logger {
+            ConsoleDestination()
+
+            if isDevelopment {
+                ConsoleDestination()
+                    .withFormatter(PrettyFormatter(components: .full))
+                    .withFilter(LevelFilter(.verbose))
+            }
+
+            for destination in additionalDestinations {
+                destination
+            }
+        }
+
+        XCTAssertEqual(logger.destinations.count, 3)
+    }
+
+    func testLoggerDoesNotEvaluateMessageWhenKnownFiltersRejectEntry() {
+        let logger = Logger {
+            RecordingDestination(filters: [LevelFilter(.error)], store: RecordingStore())
+        }
+        var didEvaluateMessage = false
+
+        func makeMessage() -> String {
+            didEvaluateMessage = true
+            return "Should not be evaluated"
+        }
+
+        logger.debug(makeMessage())
+
+        XCTAssertFalse(didEvaluateMessage)
+    }
+
+    func testLoggerEvaluatesMessageWhenDestinationAcceptsEntry() async {
+        let store = RecordingStore()
+        let logger = Logger {
+            RecordingDestination(filters: [LevelFilter(.debug)], store: store)
+        }
+        var didEvaluateMessage = false
+
+        func makeMessage() -> String {
+            didEvaluateMessage = true
+            return "Accepted"
+        }
+
+        logger.info(makeMessage())
+        let messages = await waitForMessages(in: store, expectedCount: 1)
+
+        XCTAssertTrue(didEvaluateMessage)
+        XCTAssertEqual(messages, ["Accepted"])
+    }
+
+    func testLoggerEvaluatesMessageWhenBlockFilterMayNeedMessage() {
+        let logger = Logger {
+            RecordingDestination(
+                filters: [
+                    BlockFilter { entry in
+                        entry.message.contains("Accepted")
+                    }
+                ],
+                store: RecordingStore()
+            )
+        }
+        var didEvaluateMessage = false
+
+        func makeMessage() -> String {
+            didEvaluateMessage = true
+            return "Rejected by actual write"
+        }
+
+        logger.info(makeMessage())
+
+        XCTAssertTrue(didEvaluateMessage)
+    }
+
+    func testScopedLoggerAppliesFixedCategory() async {
+        let store = RecordingStore()
+        let logger = Logger {
+            RecordingDestination(filters: [CategoryFilter(["Network"])], store: store)
+        }
+        let scopedLogger = logger.scoped(to: "Network")
+
+        scopedLogger.info("Scoped message")
+        let messages = await waitForMessages(in: store, expectedCount: 1)
+
+        XCTAssertEqual(messages, ["Scoped message"])
+    }
+
     private func makeEntry(
         message: String = "Message",
         level: LogLevel = .info,
@@ -292,6 +386,26 @@ final class LoGGerTests: XCTestCase {
             function: "makeEntry()",
             line: line
         )
+    }
+
+    private func waitForMessages(
+        in store: RecordingStore,
+        expectedCount: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async -> [String] {
+        for _ in 0..<50 {
+            let messages = await store.messages()
+            if messages.count == expectedCount {
+                return messages
+            }
+
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        let messages = await store.messages()
+        XCTFail("Expected \(expectedCount) messages, got \(messages.count)", file: file, line: line)
+        return messages
     }
 }
 

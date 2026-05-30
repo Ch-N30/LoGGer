@@ -78,6 +78,34 @@ public final class ConsoleDestination: LogDestination {
     public func write(_ entry: LogEntry) async throws {
         print(formatter.format(entry))
     }
+
+    /// Returns a copy of this destination that uses the specified formatter.
+    ///
+    /// Example:
+    /// ```swift
+    /// let destination = ConsoleDestination()
+    ///     .withFormatter(PrettyFormatter(components: .minimal))
+    /// ```
+    ///
+    /// - Parameter formatter: The formatter used by the returned destination.
+    /// - Returns: A console destination with the same filters and the specified formatter.
+    public func withFormatter(_ formatter: any LogFormatter) -> ConsoleDestination {
+        ConsoleDestination(formatter: formatter, filters: filters)
+    }
+
+    /// Returns a copy of this destination with an additional filter appended.
+    ///
+    /// Example:
+    /// ```swift
+    /// let destination = ConsoleDestination()
+    ///     .withFilter(LevelFilter(.debug))
+    /// ```
+    ///
+    /// - Parameter filter: The filter appended to the returned destination.
+    /// - Returns: A console destination with the same formatter and the appended filter.
+    public func withFilter(_ filter: any LogFilter) -> ConsoleDestination {
+        ConsoleDestination(formatter: formatter, filters: filters + [filter])
+    }
 }
 
 /// An actor that coordinates asynchronous log entry delivery to multiple destinations.
