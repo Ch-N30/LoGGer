@@ -123,19 +123,122 @@ final class LoGGerTests: XCTestCase {
         XCTAssertFalse(orFilter.isAllowed(makeEntry(level: .debug, category: "Database")))
     }
 
+    func testPrettyFormatterComponentsPresets() {
+        XCTAssertTrue(PrettyFormatter.Components.minimal.contains(.timestamp))
+        XCTAssertTrue(PrettyFormatter.Components.minimal.contains(.category))
+        XCTAssertFalse(PrettyFormatter.Components.minimal.contains(.location))
+
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.timestamp))
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.category))
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.location))
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.threadInfo))
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.metadata))
+        XCTAssertTrue(PrettyFormatter.Components.full.contains(.separator))
+    }
+
+    func testPrettyFormatterMinimalCompactOutput() {
+        let formatter = PrettyFormatter(components: .minimal, timeZoneIdentifier: "UTC")
+        let output = formatter.format(
+            makeEntry(
+                message: "Connected",
+                level: .info,
+                category: "Network"
+            )
+        )
+
+        XCTAssertEqual(output, "\u{001B}[0;32mℹ️ INFO Network Connected  22:13:20\u{001B}[0m")
+    }
+
+    func testPrettyFormatterFullCompactOutputIncludesOptionalComponents() {
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let output = formatter.format(
+            makeEntry(
+                message: "Request finished",
+                level: .debug,
+                category: "Network",
+                metadata: ["requestID": "abc", "statusCode": 200],
+                line: 12
+            )
+        )
+
+        XCTAssertTrue(output.hasPrefix(LogLevel.debug.ansiColor))
+        XCTAssertTrue(output.hasSuffix("\u{001B}[0m"))
+        XCTAssertTrue(output.contains("🐞 DEBUG Network Request finished"))
+        XCTAssertTrue(output.contains("LoGGerTests.swift:12"))
+        XCTAssertTrue(output.contains("thread: "))
+        XCTAssertTrue(output.contains("requestID=abc, statusCode=200"))
+        XCTAssertTrue(output.contains("22:13:20"))
+    }
+
+    func testPrettyFormatterExpandedBlockOutput() {
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let output = formatter.format(
+            makeEntry(
+                message: "Failed to decode response",
+                level: .error,
+                category: "Network",
+                metadata: ["statusCode": 500],
+                file: "NetworkService.swift",
+                line: 42
+            )
+        )
+
+        XCTAssertTrue(output.hasPrefix(LogLevel.error.ansiColor))
+        XCTAssertTrue(output.hasSuffix("\u{001B}[0m"))
+        XCTAssertTrue(output.contains("╔"))
+        XCTAssertTrue(output.contains("╠"))
+        XCTAssertTrue(output.contains("╚"))
+        XCTAssertTrue(output.contains("❌ ERROR  │  Network  │  22:13:20"))
+        XCTAssertTrue(output.contains("Failed to decode response"))
+        XCTAssertTrue(output.contains("→ NetworkService.swift:42"))
+        XCTAssertTrue(output.contains("→ thread: "))
+        XCTAssertTrue(output.contains("→ metadata: statusCode=500"))
+    }
+
+    func testPrettyFormatterExpandedBlockWithoutSeparatorComponent() {
+        let formatter = PrettyFormatter(
+            components: [.timestamp, .category, .location],
+            timeZoneIdentifier: "UTC"
+        )
+        let output = formatter.format(
+            makeEntry(
+                message: "Warning message",
+                level: .warning,
+                category: "Auth",
+                line: 7
+            )
+        )
+
+        XCTAssertFalse(output.contains("╠"))
+        XCTAssertFalse(output.contains("│"))
+        XCTAssertTrue(output.contains("⚠️ WARNING  Auth  22:13:20"))
+        XCTAssertTrue(output.contains("→ LoGGerTests.swift:7"))
+    }
+
+    func testPrettyFormatterStaticInstances() {
+        let entry = makeEntry(message: "Static formatter", level: .info, category: "General")
+
+        XCTAssertTrue(PrettyFormatter.default.format(entry).contains("Static formatter"))
+        XCTAssertTrue(PrettyFormatter.minimal.format(entry).contains("Static formatter"))
+    }
+
     private func makeEntry(
         message: String = "Message",
         level: LogLevel = .info,
-        category: String? = "General"
+        category: String? = "General",
+        metadata: [String: any Sendable]? = nil,
+        file: StaticString = "LoGGerTests.swift",
+        line: UInt = 1
     ) -> LogEntry {
         LogEntry(
             message: message,
             level: level,
             category: category,
+            metadata: metadata,
             date: Date(timeIntervalSince1970: 1_700_000_000),
-            file: "LoGGerTests.swift",
+            file: file,
             function: "makeEntry()",
-            line: 1
+            line: line
         )
     }
 }
