@@ -164,7 +164,8 @@ struct LoGGerTests {
         let formatter = PrettyFormatter(
             components: .full,
             timeZoneIdentifier: "UTC",
-            isColorEnabled: true
+            isColorEnabled: true,
+            usesUnicodeSymbols: true
         )
         let entry = makeEntry(
             message: "Failed to decode response",
@@ -224,11 +225,63 @@ struct LoGGerTests {
 
         // Then
         #expect(!output.contains("\n"))
-        #expect(output.contains("🐞 DEBUG Tournaments Tournament summaries loaded"))
+        #expect(output.contains("DEBUG Tournaments Tournament summaries loaded"))
+        #expect(!output.contains("🐞"))
         #expect(output.contains("22:13:20"))
         #expect(!output.contains("TournamentListViewModel.swift:23"))
         #expect(!output.contains("thread:"))
         #expect(!output.contains("count=2"))
+    }
+
+    @Test("PrettyFormatter emits emoji only when enabled")
+    func prettyFormatterEmitsEmojiOnlyWhenEnabled() {
+        // Given
+        let plainFormatter = PrettyFormatter(components: .minimal, timeZoneIdentifier: "UTC")
+        let emojiFormatter = PrettyFormatter(
+            components: .minimal,
+            timeZoneIdentifier: "UTC",
+            isEmojiEnabled: true
+        )
+        let entry = makeEntry(level: .info)
+
+        // When
+        let plainOutput = plainFormatter.format(entry)
+        let emojiOutput = emojiFormatter.format(entry)
+
+        // Then
+        #expect(!plainOutput.contains(LogLevel.info.emoji))
+        #expect(emojiOutput.contains(LogLevel.info.emoji))
+    }
+
+    @Test("PrettyFormatter uses Xcode-safe ASCII symbols by default")
+    func prettyFormatterUsesXcodeSafeAsciiSymbolsByDefault() {
+        // Given
+        let formatter = PrettyFormatter(components: .full, timeZoneIdentifier: "UTC")
+        let entry = makeEntry(
+            message: "Matches tab tapped",
+            level: .warning,
+            category: "Tab.Matches",
+            metadata: [
+                "isReselect": false,
+                "previousTab": "tournaments",
+                "selectedTab": "matches"
+            ],
+            file: "MainTabScreen.swift",
+            line: 77
+        )
+
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(output.contains("+---"))
+        #expect(output.contains("WARNING | Tab.Matches | 22:13:20"))
+        #expect(output.contains("-> MainTabScreen.swift:77"))
+        #expect(output.contains("-> metadata:"))
+        #expect(output.contains("   isReselect=false"))
+        #expect(!output.contains("╔"))
+        #expect(!output.contains("║"))
+        #expect(!output.contains("⚠️"))
     }
 
     private func waitForEntries(
