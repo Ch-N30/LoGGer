@@ -36,11 +36,11 @@ public protocol iLog: Sendable {
         line: UInt
     )
 
-    /// Creates a scoped logger that applies the specified category.
+    /// Creates a logger that applies the specified category.
     ///
     /// - Parameter category: The category applied to scoped log entries.
-    /// - Returns: A scoped logger that forwards entries to the underlying logger.
-    func scoped(to category: String) -> ScopedLogger
+    /// - Returns: A logger that applies the specified category.
+    func scoped(to category: String) -> any iLog
 }
 
 public extension iLog {

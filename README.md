@@ -101,6 +101,12 @@ final class TournamentListViewModel {
 
 `Logger` and `ScopedLogger` both conform to `iLog`; all built-in formatters, filters, and destinations remain unchanged.
 
+Use `NoOpLogger` when logging should be disabled without adding optional logger checks:
+
+```swift
+let logger: any iLog = isUITesting ? NoOpLogger() : productionLogger
+```
+
 ## Formatters
 
 - `CompactFormatter` — stable single-line output for Xcode and local debugging.

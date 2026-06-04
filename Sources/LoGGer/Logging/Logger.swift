@@ -267,7 +267,7 @@ public final class Logger: Sendable, iLog {
     ///
     /// - Parameter category: The category applied to every entry logged through the scoped logger.
     /// - Returns: A scoped logger that forwards entries to this logger.
-    public func scoped(to category: String) -> ScopedLogger {
+    public func scoped(to category: String) -> any iLog {
         ScopedLogger(logger: self, category: category)
     }
 
@@ -377,7 +377,7 @@ public struct ScopedLogger: Sendable, iLog {
     ///
     /// - Parameter category: The category applied to every entry logged through the returned scoped logger.
     /// - Returns: A scoped logger that forwards entries to the same underlying logger.
-    public func scoped(to category: String) -> ScopedLogger {
+    public func scoped(to category: String) -> any iLog {
         logger.scoped(to: category)
     }
 

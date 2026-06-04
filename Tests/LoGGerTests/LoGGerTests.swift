@@ -171,6 +171,43 @@ struct LoGGerTests {
         #expect(destination.writeCallCount == 1)
     }
 
+    @Test("NoOpLogger drops messages without evaluating them")
+    func noOpLoggerDropsMessagesWithoutEvaluatingThem() {
+        // Given
+        let logger: any iLog = NoOpLogger()
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive no-op message"
+        }
+
+        // When
+        logger.debug(makeMessage())
+        logger.error(makeMessage(), category: "Network", metadata: ["status": 500])
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+    }
+
+    @Test("NoOpLogger scoped logger remains no-op")
+    func noOpLoggerScopedLoggerRemainsNoOp() {
+        // Given
+        let logger: any iLog = NoOpLogger().scoped(to: "Network")
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive scoped no-op message"
+        }
+
+        // When
+        logger.warning(makeMessage())
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+    }
+
     @Test("@autoclosure message is not evaluated when filtered out")
     func autoclosureMessageIsNotEvaluatedWhenFilteredOut() async throws {
         // Given
