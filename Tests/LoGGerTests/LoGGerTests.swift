@@ -134,6 +134,80 @@ struct LoGGerTests {
         #expect(destination.writeCallCount == 1)
     }
 
+    @Test("Logger can be used through iLog abstraction")
+    func loggerCanBeUsedThroughILogAbstraction() async {
+        // Given
+        let destination = MockDestination()
+        let logger: any iLog = Logger {
+            destination
+        }
+
+        // When
+        logger.info("Injected logger", category: "DI")
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(captured.first?.message == "Injected logger")
+        #expect(captured.first?.category == "DI")
+        #expect(destination.writeCallCount == 1)
+    }
+
+    @Test("ScopedLogger can be used through iLog abstraction")
+    func scopedLoggerCanBeUsedThroughILogAbstraction() async {
+        // Given
+        let destination = MockDestination(filters: [CategoryFilter(["Network"])])
+        let logger = Logger {
+            destination
+        }
+        let scopedLogger: any iLog = logger.scoped(to: "Network")
+
+        // When
+        scopedLogger.info("Scoped protocol logger")
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(captured.first?.message == "Scoped protocol logger")
+        #expect(captured.first?.category == "Network")
+        #expect(destination.writeCallCount == 1)
+    }
+
+    @Test("NoOpLogger drops messages without evaluating them")
+    func noOpLoggerDropsMessagesWithoutEvaluatingThem() {
+        // Given
+        let logger: any iLog = NoOpLogger()
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive no-op message"
+        }
+
+        // When
+        logger.debug(makeMessage())
+        logger.error(makeMessage(), category: "Network", metadata: ["status": 500])
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+    }
+
+    @Test("NoOpLogger scoped logger remains no-op")
+    func noOpLoggerScopedLoggerRemainsNoOp() {
+        // Given
+        let logger: any iLog = NoOpLogger().scoped(to: "Network")
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive scoped no-op message"
+        }
+
+        // When
+        logger.warning(makeMessage())
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+    }
+
     @Test("@autoclosure message is not evaluated when filtered out")
     func autoclosureMessageIsNotEvaluatedWhenFilteredOut() async throws {
         // Given
@@ -146,6 +220,30 @@ struct LoGGerTests {
         func makeMessage() -> String {
             messageEvaluationCount += 1
             return "Expensive message"
+        }
+
+        // When
+        logger.error(makeMessage())
+        try await Task.sleep(for: .milliseconds(20))
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+        #expect(destination.captured.isEmpty)
+        #expect(destination.writeCallCount == 0)
+    }
+
+    @Test("@autoclosure message stays lazy through iLog abstraction")
+    func autoclosureMessageStaysLazyThroughILogAbstraction() async throws {
+        // Given
+        let destination = MockDestination(filters: [LevelFilter(.fault)])
+        let logger: any iLog = Logger {
+            destination
+        }
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive protocol message"
         }
 
         // When
@@ -282,6 +380,83 @@ struct LoGGerTests {
         #expect(!output.contains("╔"))
         #expect(!output.contains("║"))
         #expect(!output.contains("⚠️"))
+    }
+
+    @Test("CompactFormatter renders plain single-line output")
+    func compactFormatterRendersPlainSingleLineOutput() {
+        // Given
+        let formatter = CompactFormatter(
+            includesLocation: true,
+            includesMetadata: true,
+            timeZoneIdentifier: "UTC"
+        )
+        let entry = makeEntry(
+            message: "Tournament summaries loaded",
+            level: .debug,
+            category: "Tournaments",
+            metadata: ["count": 2],
+            file: "TournamentListViewModel.swift",
+            line: 23
+        )
+
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(output == "DEBUG Tournaments Tournament summaries loaded TournamentListViewModel.swift:23 count=2  22:13:20")
+    }
+
+    @Test("KeyValueFormatter renders logfmt-style output")
+    func keyValueFormatterRendersLogfmtStyleOutput() {
+        // Given
+        let formatter = KeyValueFormatter(timeZoneIdentifier: "UTC")
+        let entry = makeEntry(
+            message: "Failed to decode response",
+            level: .error,
+            category: "Network",
+            metadata: ["status": 500],
+            file: "NetworkService.swift",
+            line: 42
+        )
+
+        // When
+        let output = formatter.format(entry)
+
+        // Then
+        #expect(output.contains("level=ERROR"))
+        #expect(output.contains("category=Network"))
+        #expect(output.contains("message=\"Failed to decode response\""))
+        #expect(output.contains("file=NetworkService.swift"))
+        #expect(output.contains("line=42"))
+        #expect(output.contains("status=500"))
+    }
+
+    @Test("JSONFormatter renders parseable JSON output")
+    func jsonFormatterRendersParseableJsonOutput() throws {
+        // Given
+        let formatter = JSONFormatter(timeZoneIdentifier: "UTC")
+        let entry = makeEntry(
+            message: "Failed to decode response",
+            level: .error,
+            category: "Network",
+            metadata: ["status": 500],
+            file: "NetworkService.swift",
+            line: 42
+        )
+
+        // When
+        let output = formatter.format(entry)
+        let data = try #require(output.data(using: .utf8))
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let metadata = try #require(object["metadata"] as? [String: Any])
+
+        // Then
+        #expect(object["level"] as? String == "ERROR")
+        #expect(object["category"] as? String == "Network")
+        #expect(object["message"] as? String == "Failed to decode response")
+        #expect(object["file"] as? String == "NetworkService.swift")
+        #expect(object["line"] as? Int == 42)
+        #expect(metadata["status"] as? Int == 500)
     }
 
     private func waitForEntries(

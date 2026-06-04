@@ -48,7 +48,7 @@ network.info("Request started")
 network.error("Failed to decode response", metadata: ["status": 500])
 ```
 
-Run the bundled console demo without creating another project:
+Run the bundled console demo without creating another project. It prints examples for every built-in formatter:
 
 ```sh
 swift run LoGGerDemo
@@ -84,6 +84,35 @@ PrettyFormatter(
     usesUnicodeSymbols: true
 )
 ```
+
+## Dependency Injection
+
+Use `iLog` when application code should depend on logging behavior, not on the concrete `Logger` class:
+
+```swift
+final class TournamentListViewModel {
+    private let logger: any iLog
+
+    init(logger: any iLog) {
+        self.logger = logger
+    }
+}
+```
+
+`Logger` and `ScopedLogger` both conform to `iLog`; all built-in formatters, filters, and destinations remain unchanged.
+
+Use `NoOpLogger` when logging should be disabled without adding optional logger checks:
+
+```swift
+let logger: any iLog = isUITesting ? NoOpLogger() : productionLogger
+```
+
+## Formatters
+
+- `CompactFormatter` — stable single-line output for Xcode and local debugging.
+- `PrettyFormatter` — human-readable compact lines and framed warning/error blocks.
+- `KeyValueFormatter` — logfmt-style output for grep-friendly structured logs.
+- `JSONFormatter` — machine-readable JSON output for files and external transports.
 
 ## Extending
 

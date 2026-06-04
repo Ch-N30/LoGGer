@@ -1,22 +1,5 @@
 import Foundation
 
-/// A type that converts a log entry into a textual representation.
-///
-/// Formatters are `Sendable`, so they can be shared with actors and other concurrent logging components.
-///
-/// Example:
-/// ```swift
-/// let formatter: any LogFormatter = PrettyFormatter.default
-/// let text = formatter.format(entry)
-/// ```
-public protocol LogFormatter: Sendable {
-    /// Converts the specified log entry into a string.
-    ///
-    /// - Parameter entry: The log entry to format.
-    /// - Returns: A formatted string that represents the entry.
-    func format(_ entry: LogEntry) -> String
-}
-
 /// A terminal-oriented formatter that renders compact lines for low-severity entries and framed blocks for high-severity entries.
 ///
 /// `PrettyFormatter` can apply the ANSI color from `LogLevel.ansiColor` to the whole formatted output when color is enabled.
@@ -26,7 +9,7 @@ public protocol LogFormatter: Sendable {
 /// let formatter = PrettyFormatter(components: .full)
 /// let output = formatter.format(entry)
 /// ```
-public struct PrettyFormatter: LogFormatter {
+public final class PrettyFormatter: LogFormatter {
     /// A set of optional sections included in formatted log output.
     ///
     /// Example:

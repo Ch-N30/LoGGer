@@ -4,20 +4,37 @@ import LoGGer
 @main
 struct LoGGerDemo {
     static func main() async throws {
-        let logger = Logger {
-            ConsoleDestination(
-                formatter: PrettyFormatter(components: .full),
-                filters: [LevelFilter(.debug)]
+        try await demonstrateCompactFormatter()
+        try await demonstratePrettyFormatter()
+        try await demonstrateKeyValueFormatter()
+        try await demonstrateJSONFormatter()
+    }
+
+    private static func demonstrateCompactFormatter() async throws {
+        printSection("CompactFormatter")
+
+        let logger = logger(
+            formatter: CompactFormatter(
+                includesLocation: true,
+                includesMetadata: true
             )
-        }
+        )
 
-        let network = logger.scoped(to: "Network")
-        let tabs = logger.scoped(to: "Tab.Matches")
+        logger.info(
+            "Tournament summaries loaded",
+            category: "Tournaments",
+            metadata: ["count": 2]
+        )
 
-        logger.debug("Application bootstrapped", category: "App")
         try await flushLogPipeline()
-        network.info("Request started", metadata: ["path": "/v1/tournaments"])
-        try await flushLogPipeline()
+    }
+
+    private static func demonstratePrettyFormatter() async throws {
+        printSection("PrettyFormatter")
+
+        let tabs = logger(formatter: PrettyFormatter(components: .full))
+            .scoped(to: "Tab.Matches")
+
         tabs.warning(
             "Matches tab tapped",
             metadata: [
@@ -26,7 +43,16 @@ struct LoGGerDemo {
                 "selectedTab": "matches"
             ]
         )
+
         try await flushLogPipeline()
+    }
+
+    private static func demonstrateKeyValueFormatter() async throws {
+        printSection("KeyValueFormatter")
+
+        let network = logger(formatter: KeyValueFormatter())
+            .scoped(to: "Network")
+
         network.error(
             "Failed to decode response",
             metadata: [
@@ -36,6 +62,36 @@ struct LoGGerDemo {
         )
 
         try await flushLogPipeline()
+    }
+
+    private static func demonstrateJSONFormatter() async throws {
+        printSection("JSONFormatter")
+
+        let auth = logger(formatter: JSONFormatter())
+            .scoped(to: "Auth")
+
+        auth.info(
+            "Authorization completed",
+            metadata: [
+                "method": "password",
+                "profileID": 42
+            ]
+        )
+
+        try await flushLogPipeline()
+    }
+
+    private static func logger(formatter: any LogFormatter) -> Logger {
+        Logger {
+            ConsoleDestination(
+                formatter: formatter,
+                filters: [LevelFilter(.debug)]
+            )
+        }
+    }
+
+    private static func printSection(_ title: String) {
+        print("\n=== \(title) ===")
     }
 
     private static func flushLogPipeline() async throws {
