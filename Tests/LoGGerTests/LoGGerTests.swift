@@ -134,6 +134,43 @@ struct LoGGerTests {
         #expect(destination.writeCallCount == 1)
     }
 
+    @Test("Logger can be used through iLog abstraction")
+    func loggerCanBeUsedThroughILogAbstraction() async {
+        // Given
+        let destination = MockDestination()
+        let logger: any iLog = Logger {
+            destination
+        }
+
+        // When
+        logger.info("Injected logger", category: "DI")
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(captured.first?.message == "Injected logger")
+        #expect(captured.first?.category == "DI")
+        #expect(destination.writeCallCount == 1)
+    }
+
+    @Test("ScopedLogger can be used through iLog abstraction")
+    func scopedLoggerCanBeUsedThroughILogAbstraction() async {
+        // Given
+        let destination = MockDestination(filters: [CategoryFilter(["Network"])])
+        let logger = Logger {
+            destination
+        }
+        let scopedLogger: any iLog = logger.scoped(to: "Network")
+
+        // When
+        scopedLogger.info("Scoped protocol logger")
+        let captured = await waitForEntries(in: destination, expectedCount: 1)
+
+        // Then
+        #expect(captured.first?.message == "Scoped protocol logger")
+        #expect(captured.first?.category == "Network")
+        #expect(destination.writeCallCount == 1)
+    }
+
     @Test("@autoclosure message is not evaluated when filtered out")
     func autoclosureMessageIsNotEvaluatedWhenFilteredOut() async throws {
         // Given
@@ -146,6 +183,30 @@ struct LoGGerTests {
         func makeMessage() -> String {
             messageEvaluationCount += 1
             return "Expensive message"
+        }
+
+        // When
+        logger.error(makeMessage())
+        try await Task.sleep(for: .milliseconds(20))
+
+        // Then
+        #expect(messageEvaluationCount == 0)
+        #expect(destination.captured.isEmpty)
+        #expect(destination.writeCallCount == 0)
+    }
+
+    @Test("@autoclosure message stays lazy through iLog abstraction")
+    func autoclosureMessageStaysLazyThroughILogAbstraction() async throws {
+        // Given
+        let destination = MockDestination(filters: [LevelFilter(.fault)])
+        let logger: any iLog = Logger {
+            destination
+        }
+        var messageEvaluationCount = 0
+
+        func makeMessage() -> String {
+            messageEvaluationCount += 1
+            return "Expensive protocol message"
         }
 
         // When

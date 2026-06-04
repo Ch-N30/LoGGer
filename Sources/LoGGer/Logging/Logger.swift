@@ -73,7 +73,7 @@ public struct LoggerBuilder {
 ///
 /// logger.info("Application started", category: "Lifecycle")
 /// ```
-public final class Logger: Sendable {
+public final class Logger: Sendable, iLog {
     let destinations: [any LogDestination]
     private let actor: LogActor
 
@@ -307,7 +307,7 @@ public final class Logger: Sendable {
 /// let authLogger = logger.scoped(to: "Auth")
 /// authLogger.error("Token refresh failed")
 /// ```
-public struct ScopedLogger: Sendable {
+public struct ScopedLogger: Sendable, iLog {
     private let logger: Logger
     private let category: String
 
@@ -339,6 +339,46 @@ public struct ScopedLogger: Sendable {
         line: UInt = #line
     ) {
         logger.log(message(), level: level, category: category, metadata: metadata, file: file, function: function, line: line)
+    }
+
+    /// Logs a message at the specified level using the scoped category unless a category override is provided.
+    ///
+    /// This overload lets `ScopedLogger` conform to `iLog`.
+    ///
+    /// - Parameters:
+    ///   - message: The message expression to evaluate lazily.
+    ///   - level: The severity level of the message.
+    ///   - category: An optional category override for this entry.
+    ///   - metadata: Optional structured metadata attached to the entry.
+    ///   - file: The source file that creates the entry.
+    ///   - function: The function that creates the entry.
+    ///   - line: The source line that creates the entry.
+    public func log(
+        _ message: @autoclosure () -> String,
+        level: LogLevel,
+        category: String?,
+        metadata: [String: any Sendable]?,
+        file: StaticString,
+        function: StaticString,
+        line: UInt
+    ) {
+        logger.log(
+            message(),
+            level: level,
+            category: category ?? self.category,
+            metadata: metadata,
+            file: file,
+            function: function,
+            line: line
+        )
+    }
+
+    /// Creates a scoped logger that uses the specified category.
+    ///
+    /// - Parameter category: The category applied to every entry logged through the returned scoped logger.
+    /// - Returns: A scoped logger that forwards entries to the same underlying logger.
+    public func scoped(to category: String) -> ScopedLogger {
+        logger.scoped(to: category)
     }
 
     /// Logs a verbose diagnostic message with the scoped category.

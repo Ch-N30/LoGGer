@@ -85,6 +85,22 @@ PrettyFormatter(
 )
 ```
 
+## Dependency Injection
+
+Use `iLog` when application code should depend on logging behavior, not on the concrete `Logger` class:
+
+```swift
+final class TournamentListViewModel {
+    private let logger: any iLog
+
+    init(logger: any iLog) {
+        self.logger = logger
+    }
+}
+```
+
+`Logger` and `ScopedLogger` both conform to `iLog`; all built-in formatters, filters, and destinations remain unchanged.
+
 ## Formatters
 
 - `CompactFormatter` — stable single-line output for Xcode and local debugging.
