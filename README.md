@@ -48,7 +48,7 @@ network.info("Request started")
 network.error("Failed to decode response", metadata: ["status": 500])
 ```
 
-Run the bundled console demo without creating another project:
+Run the bundled console demo without creating another project. It prints examples for every built-in formatter:
 
 ```sh
 swift run LoGGerDemo
