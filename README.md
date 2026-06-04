@@ -85,6 +85,13 @@ PrettyFormatter(
 )
 ```
 
+## Formatters
+
+- `CompactFormatter` — stable single-line output for Xcode and local debugging.
+- `PrettyFormatter` — human-readable compact lines and framed warning/error blocks.
+- `KeyValueFormatter` — logfmt-style output for grep-friendly structured logs.
+- `JSONFormatter` — machine-readable JSON output for files and external transports.
+
 ## Extending
 
 Implement `LogDestination` for custom transports. LoGGer does not ship Sentry or Firebase adapters; keep vendor SDKs in your app or in a separate integration package.
